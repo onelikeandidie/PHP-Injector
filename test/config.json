@@ -1,0 +1,6 @@
+{
+    "injections": "./injections/",
+    "src": "./src/",
+    "cache": "./cache/",
+    "use_document_root": true
+}
