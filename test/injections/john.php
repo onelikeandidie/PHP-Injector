@@ -37,7 +37,12 @@ function HelloRequiresMixin() {
     require_once "./requires.php";
 }
 
-#@Inject(at = "TAIL", target = "index.php/$Findex")
+#@Inject(at = "TAIL", target = "index.php/$Findex", offset = 1)
 function HelloTailMixin() {
     echo get_dir();
+}
+
+#@Inject(at = "TAIL", target = "index.php/$Findex")
+function GoodByeTailMixin() {
+    echo "Goodbye!";
 }

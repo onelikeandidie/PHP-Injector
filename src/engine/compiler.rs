@@ -1,9 +1,9 @@
-use std::{path::Path, fs::{read_to_string, File, self}, collections::HashMap, env};
+use std::{path::Path, fs::{read_to_string, File, self}, collections::HashMap};
 use std::io::Write;
 
 use walkdir::WalkDir;
 
-use crate::engine::{php::{read_source, extract_source_mappings}, util::get_index_of_line};
+use crate::engine::{php::{extract_source_mappings}, util::get_index_of_line};
 
 use super::php::SourceMapping;
 use super::mixin::MixinTypes;
@@ -60,45 +60,56 @@ pub fn compile(config: &Config) {
             // File mixins
             continue;
         }
+        if mixin.at == MixinTypes::None {
+            continue;
+        }
+        // Get the source mapping for this mixin
+        let divider = target.rfind('/').expect("Could not extract target function");
+        let path = &target[0..divider];
+        injections.push((
+            mixin.path.to_owned(), 
+            path.to_string(), 
+            mixin.namespace.to_string(),
+            mixin.name.to_string(),
+        ));
+        let clit = &target[(divider + 1)..(target.len())];
+        let target_file = extract_src_map_from_target(&target);
+        let mut src = source_mappings
+            .get_mut(clit)
+            .expect("Could not get source mapping");
+        let file = files
+            .get_mut(target_file)
+            .expect("Could not get source");
         // Function mixins
         match &mixin.at {
+            // Inserts at the start of target
             MixinTypes::Head(injection) => {
-                let divider = target.rfind('/').expect("Could not extract target function");
-                let path = &target[0..divider];
-                injections.push((
-                    mixin.path.to_owned(), 
-                    path.to_string(), 
-                    mixin.namespace.to_string(),
-                    mixin.name.to_string(),
-                ));
-                let clit = &target[(divider + 1)..(target.len())];
-                let target_file = extract_src_map_from_target(&target);
-                let mut src = source_mappings
-                    .get_mut(clit)
-                    .expect("Could not get source mapping");
-                let mut file = files
-                    .get_mut(target_file)
-                    .expect("Could not get source");
-                src.to += 3;
-                let function_statement = format!("\n{}(); #mixin call {} from {}", mixin.name, mixin.name, mixin.path);
+                let function_statement = create_back_map_string(mixin);
                 let from = src.from as i32 + injection.offset;
                 let from  = from as usize;
                 let index1 = get_index_of_line(file, from);
                 file.insert_str(index1, &function_statement);
-                // TODO: AFTER INSERT, UPDATE SOURCE MAPPINGS......
                 move_mappings(&mut source_mappings, &path, from, 1);
+            },
+            // Inserts at the end of target
+            MixinTypes::Tail(injection) => {
+                let function_statement = create_back_map_string(mixin);
+                let to = src.to as i32 - injection.offset;
+                let to  = to as usize;
+                let index1 = get_index_of_line(file, to);
+                file.insert_str(index1, &function_statement);
+                move_mappings(&mut source_mappings, &path, to, -1);
             },
             _ => {},
         }
     }
     println!("Adding imports");
-    let current_dir = env::current_dir().unwrap();
     for injection in &injections {
         println!("> Injecting requires {} into {}", injection.0, injection.1);
         let src_path = injection.1.clone();
         let garbage = injection.0.clone();
         let injection_path = Path::new(&garbage);
-        let mut contents = files.get_mut(&src_path).expect("Error injecting?");
+        let contents = files.get_mut(&src_path).expect("Error injecting?");
         let mut prepend = "";
         if config.use_document_root {
             prepend = "$_SERVER['DOCUMENT_ROOT'] . ";
@@ -122,6 +133,10 @@ pub fn compile(config: &Config) {
         println!("> Wrote: {}", path.clone().to_string_lossy());
     }
     println!("Done!");
+}
+
+fn create_back_map_string(mixin: &super::mixin::Mixin) -> String {
+    return format!("\n{}(); #mixin call {} from {}", mixin.name, mixin.name, mixin.path);
 }
 
 fn extract_target_mapping(tag: &str) -> Vec<String> {
@@ -156,9 +171,9 @@ fn move_mappings(
     source_mapping: &mut HashMap<String, SourceMapping>, 
     file_name: &str,
     start_index: usize,
-    move_amount: usize,
+    move_amount: i32,
 ) {
-    for mut ele in source_mapping {
+    for ele in source_mapping {
         let mut mapping = ele.1;
         // Find the source mapping with the same path
         if mapping.path != file_name {
@@ -167,10 +182,12 @@ fn move_mappings(
         // If the "to" and "from" are after the start_index
         // Then move them by the required amount
         if mapping.from > start_index {
-            mapping.from += move_amount;
+            // WARN: This should throw a warning in the future
+            // Converting from i32 to usize can be unsafe
+            mapping.from = (mapping.from as i32 + move_amount) as usize;
         }
         if mapping.to > start_index {
-            mapping.to += move_amount;
+            mapping.to = (mapping.to as i32 + move_amount) as usize;
         }
     }
 }
