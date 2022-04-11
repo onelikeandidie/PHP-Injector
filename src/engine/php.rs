@@ -38,6 +38,7 @@ pub fn extract_source_mappings(php_content: &String, path: &Path) -> HashMap<Str
     let mut is_in_function = false;
     let mut last_function_depth = 0;
     let mut last_function_start = 0;
+    let mut find_last_function_start = false;
     let mut last_function_mapping = "".to_owned();
     let mut bracket_lvl = 0;
     let mut v_cursor = 0;
@@ -59,14 +60,13 @@ pub fn extract_source_mappings(php_content: &String, path: &Path) -> HashMap<Str
         }
         if line.contains("function") {
             last_function_mapping = parent.clone() + &"$F".to_owned() + extract_function_name(line);
-            is_in_function = true;
             last_function_depth = bracket_lvl;
-            // TODO: Fix alt line functions
-            // There's a problem here, devs that like to put their function
-            // brackets on the next line will run this part of the code since
-            // it assumes the function starts on the same line as the function
-            // name...
-            last_function_start = v_cursor;
+            if line.trim_end().ends_with("{") {
+                is_in_function = true;
+                last_function_start = v_cursor;
+            } else {
+                find_last_function_start = true;
+            }
         }
         if line.starts_with("class") {
             parent = "$C".to_owned() + extract_class_name(line);
@@ -76,6 +76,11 @@ pub fn extract_source_mappings(php_content: &String, path: &Path) -> HashMap<Str
         }
         if line.starts_with("}") || line.ends_with("}") {
             depth_change -= 1;
+        }
+        if find_last_function_start && depth_change > 0 {
+            last_function_start = v_cursor;
+            find_last_function_start = false;
+            is_in_function = true;
         }
         bracket_lvl += depth_change;
         if is_in_function && bracket_lvl == last_function_depth {

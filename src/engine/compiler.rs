@@ -166,10 +166,10 @@ fn move_mappings(
         }
         // If the "to" and "from" are after the start_index
         // Then move them by the required amount
-        if mapping.from >= start_index {
+        if mapping.from > start_index {
             mapping.from += move_amount;
         }
-        if mapping.to >= start_index {
+        if mapping.to > start_index {
             mapping.to += move_amount;
         }
     }
