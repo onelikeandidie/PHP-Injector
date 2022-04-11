@@ -61,6 +61,11 @@ pub fn extract_source_mappings(php_content: &String, path: &Path) -> HashMap<Str
             last_function_mapping = parent.clone() + &"$F".to_owned() + extract_function_name(line);
             is_in_function = true;
             last_function_depth = bracket_lvl;
+            // TODO: Fix alt line functions
+            // There's a problem here, devs that like to put their function
+            // brackets on the next line will run this part of the code since
+            // it assumes the function starts on the same line as the function
+            // name...
             last_function_start = v_cursor;
         }
         if line.starts_with("class") {

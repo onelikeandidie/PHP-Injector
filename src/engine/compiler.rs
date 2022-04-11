@@ -86,7 +86,7 @@ pub fn compile(config: &Config) {
                 let index1 = get_index_of_line(file, from);
                 file.insert_str(index1, &function_statement);
                 // TODO: AFTER INSERT, UPDATE SOURCE MAPPINGS......
-
+                move_mappings(&mut source_mappings, &path, from, 1);
             },
             _ => {},
         }
@@ -154,7 +154,23 @@ fn extract_src_map_from_target(target: &str) -> &str {
 
 fn move_mappings(
     source_mapping: &mut HashMap<String, SourceMapping>, 
+    file_name: &str,
     start_index: usize,
     move_amount: usize,
 ) {
+    for mut ele in source_mapping {
+        let mut mapping = ele.1;
+        // Find the source mapping with the same path
+        if mapping.path != file_name {
+            continue;
+        }
+        // If the "to" and "from" are after the start_index
+        // Then move them by the required amount
+        if mapping.from >= start_index {
+            mapping.from += move_amount;
+        }
+        if mapping.to >= start_index {
+            mapping.to += move_amount;
+        }
+    }
 }
