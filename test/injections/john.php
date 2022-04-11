@@ -38,7 +38,7 @@ function HelloRequiresMixin() {
 }
 
 #@Inject(at = "TAIL", target = "index.php/$Findex", offset = 1)
-function HelloTailMixin() {
+function ShowDirTailMixin() {
     echo get_dir();
 }
 
