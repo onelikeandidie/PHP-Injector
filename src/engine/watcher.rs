@@ -21,10 +21,10 @@ fn watch_files(path: PathBuf, config: &Config) -> notify::Result<()> {
     // Start listening for changes
     loop {
         match rx.recv().unwrap() {
-            DebouncedEvent::Create(_) => compile(config),
-            DebouncedEvent::Write(_) => compile(config),
-            DebouncedEvent::Remove(_) => compile(config),
-            DebouncedEvent::Rename(_, _) => compile(config),
+            DebouncedEvent::Create(_) => {compile(config);},
+            DebouncedEvent::Write(_) => {compile(config);},
+            DebouncedEvent::Remove(_) => {compile(config);},
+            DebouncedEvent::Rename(_, _) => {compile(config);},
             _ => {}
         }
     }

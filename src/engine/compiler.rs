@@ -10,7 +10,7 @@ use super::mixin::MixinTypes;
 use super::interpreter::Interpreter;
 use super::config::Config;
 
-pub fn compile(config: &Config) {
+pub fn compile(config: &Config) -> (usize, usize) {
     println!("Warming up Interpreter");
     // Retrive the paths 
     let origin = Path::new(&config.origin);
@@ -51,6 +51,7 @@ pub fn compile(config: &Config) {
             source_mappings.extend(mappings);
         }
     }
+    let file_count = files.len();
     println!("Compiling Mixins");
     let mut injections: Vec<(String, String, String, String)> = vec![];
     for mixin in &god.mixins {
@@ -103,25 +104,39 @@ pub fn compile(config: &Config) {
             _ => {},
         }
     }
-    println!("Adding imports");
+    let mixin_count = injections.len();
+    println!("Adding use statements");
+    // First is src and second is injection
+    let mut files_imported: Vec<(String, String)> = vec![];
     for injection in &injections {
         println!("> Injecting requires {} into {}", injection.0, injection.1);
         let src_path = injection.1.clone();
         let garbage = injection.0.clone();
         let injection_path = Path::new(&garbage);
         let contents = files.get_mut(&src_path).expect("Error injecting?");
+        let namespaced = format!("{}\\{}", injection.2, injection.3);
+        let map_back = format!("\n#mixin {} from {}\n", namespaced, injection_path.clone().to_string_lossy());
+        let use_statement = format!("use function {};\n", namespaced);
+        // Insert after "<?php"
+        contents.insert_str(5, &use_statement);
+        contents.insert_str(5, &map_back);
+        // Check if the require statement has been added before
+        let p = injection_path.to_str().unwrap().to_string();
+        if let None = files_imported.iter().find(|v| {v.1 == p && v.0 == src_path}) {
+            files_imported.push((src_path, p));
+        }
+    }
+    println!("Adding imports");
+    for import in files_imported {
         let mut prepend = "";
         if config.use_document_root {
             prepend = "$_SERVER['DOCUMENT_ROOT'] . ";
         }
-        let namespaced = format!("{}\\{}", injection.2, injection.3);
-        let map_back = format!("\n#mixin {} from {}\n", namespaced, injection_path.clone().to_string_lossy());
-        let use_statement = format!("use function {};\n", namespaced);
-        let require_statement = format!("require_once {}\"/{}\";\n", prepend, injection_path.to_str().unwrap());
-        // Insert after "<?php"
-        contents.insert_str(5, &use_statement);
+        let src_path = import.0;
+        let injection = import.1;
+        let contents = files.get_mut(&src_path).expect("Error injecting?");
+        let require_statement = format!("\nrequire_once {}\"/{}\";\n", prepend, injection);
         contents.insert_str(5, &require_statement);
-        contents.insert_str(5, &map_back);
     }
     println!("Writing Cache");
     for file in files {
@@ -132,7 +147,9 @@ pub fn compile(config: &Config) {
         write!(handle, "{}", file.1).unwrap();
         println!("> Wrote: {}", path.clone().to_string_lossy());
     }
-    println!("Done!");
+    println!("Done! {} Mixins and {} Source Files written", mixin_count, file_count);
+    return (mixin_count, file_count);
+
 }
 
 fn create_mixin_call_string(mixin: &super::mixin::Mixin) -> String {

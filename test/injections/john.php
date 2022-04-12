@@ -22,11 +22,6 @@ function JohnControllerModifyVarMixin(string &$var) {
     $var = "Variable changed in mixin!";
 }
 
-#@Inject(at = "HEAD", target = "nested/view.php/$Ftest")
-function TestNestedMixin() {
-    echo "The following will be printed: Test";
-}
-
 #@Inject(at = "SLICE", target = "index.php/$Findex", from = 0, to = 0)
 function HelloJohnMixin() {
     echo "Hello, from John :)";
