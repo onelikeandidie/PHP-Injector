@@ -26,3 +26,11 @@ function test5() {
 function test6() {
     echo "test6";
 }
+
+test0();
+test1();
+test2();
+test3();
+test4();
+test5();
+test6();

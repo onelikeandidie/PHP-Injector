@@ -28,6 +28,6 @@ fn main() {
     if args.contains(&"--watch".to_owned()) {
         watch(&config);
     } else {
-        compile(&config);
+        compile(&config, None);
     }
 }

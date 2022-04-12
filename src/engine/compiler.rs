@@ -3,14 +3,17 @@ use std::io::Write;
 
 use walkdir::WalkDir;
 
-use crate::engine::{php::{extract_source_mappings}, util::get_index_of_line};
+use crate::engine::{php::{extract_source_mappings, walk_src_mappings}, util::get_index_of_line};
 
 use super::php::SourceMapping;
 use super::mixin::MixinTypes;
 use super::interpreter::Interpreter;
 use super::config::Config;
 
-pub fn compile(config: &Config) -> (usize, usize) {
+pub fn compile(
+    config: &Config, 
+    source: Option<(HashMap<String, String>, HashMap<String, SourceMapping>)>
+) -> (usize, usize) {
     println!("Warming up Interpreter");
     // Retrive the paths 
     let origin = Path::new(&config.origin);
@@ -29,27 +32,15 @@ pub fn compile(config: &Config) -> (usize, usize) {
         }
     }
     println!("Mapping Sources");
-    let mut files: HashMap<String, String> = HashMap::new();
-    let mut source_mappings: HashMap<String, SourceMapping> = HashMap::new();
-    let walk_dir = WalkDir::new(src_path.clone());
-    for entry in walk_dir {
-        let entry = entry.unwrap();
-        if entry.file_type().is_file() && entry.file_name().to_str().unwrap().ends_with(".php") {
-            let path = entry.path();
-            println!("> Mapping {}", path.to_string_lossy());
-            let contents = read_to_string(entry.path()).unwrap();
-            // Take out the "src" from config file
-            let mut relative_path = path.clone().to_str().unwrap();
-            let src = src_path.clone();
-            let src_path = src.to_str().unwrap();
-            if relative_path.contains(src_path.clone()) {
-                relative_path = &relative_path[src_path.len()..];
-            } 
-            files.insert(relative_path.clone().to_string(), contents.to_string());
-            let relative_path = &Path::new(relative_path.clone());
-            let mappings = extract_source_mappings(&contents, relative_path);
-            source_mappings.extend(mappings);
-        }
+    let (mut files, mut source_mappings);
+    if let Some(mappings) = source {
+        // This is for when the "wat"
+        files = mappings.0; 
+        source_mappings = mappings.1;
+    } else {
+        let mappings = walk_src_mappings(src_path);
+        files = mappings.0; 
+        source_mappings = mappings.1;
     }
     let file_count = files.len();
     println!("Compiling Mixins");

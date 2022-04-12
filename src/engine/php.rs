@@ -1,7 +1,8 @@
-use std::{collections::HashMap, path::Path, fs};
+use std::{collections::HashMap, path::Path, fs::{self, read_to_string}};
 
 use regex::Regex;
 use lazy_static::lazy_static;
+use walkdir::WalkDir;
 
 lazy_static! {
     static ref FUNCTION_ARGS_REGEX: Regex = Regex::new(r"\$\w+").unwrap();
@@ -143,7 +144,32 @@ pub fn extract_source_mappings(php_content: &String, path: &Path) -> HashMap<Str
     return map;
 }
 
-#[derive(Debug)]
+pub fn walk_src_mappings(src_path: std::path::PathBuf) -> (HashMap<String, String>, HashMap<String, SourceMapping>) {
+    let mut files: HashMap<String, String> = HashMap::new();
+    let mut source_mappings: HashMap<String, SourceMapping> = HashMap::new();
+    let walk_dir = WalkDir::new(src_path.clone());
+    for entry in walk_dir {
+        let entry = entry.unwrap();
+        if entry.file_type().is_file() && entry.file_name().to_str().unwrap().ends_with(".php") {
+            let path = entry.path();
+            let contents = read_to_string(entry.path()).unwrap();
+            // Take out the "src" from config file
+            let mut relative_path = path.clone().to_str().unwrap();
+            let src = src_path.clone();
+            let src_path = src.to_str().unwrap();
+            if relative_path.contains(src_path.clone()) {
+                relative_path = &relative_path[src_path.len()..];
+            } 
+            files.insert(relative_path.clone().to_string(), contents.to_string());
+            let relative_path = &Path::new(relative_path.clone());
+            let mappings = extract_source_mappings(&contents, relative_path);
+            source_mappings.extend(mappings);
+        }
+    }
+    (files, source_mappings)
+}
+
+#[derive(Debug, Clone)]
 pub struct SourceMapping {
     pub path: String,
     pub mapping: String,
