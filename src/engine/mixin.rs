@@ -5,6 +5,7 @@ pub struct Mixin {
     pub name: String,
     pub namespace: String,
     pub at: MixinTypes,
+    pub args: Vec<String>,
     pub target: String,
     pub path: String,
 }
@@ -26,6 +27,7 @@ impl Mixin {
             name: Default::default(), 
             namespace: Default::default(), 
             at: MixinTypes::None, 
+            args: vec![],
             target: Default::default(),
             path: Default::default()
         }

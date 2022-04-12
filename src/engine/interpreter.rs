@@ -42,6 +42,7 @@ impl Interpreter {
                         name: php::extract_function_name(line).to_string(),
                         namespace: namespace.to_string(),
                         at: incomplete_mixin.at.clone(),
+                        args: php::extract_function_params(line),
                         target: incomplete_mixin.target.clone(),
                         path: path.to_string()
                     };
