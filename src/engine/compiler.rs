@@ -84,7 +84,7 @@ pub fn compile(config: &Config) {
         match &mixin.at {
             // Inserts at the start of target
             MixinTypes::Head(injection) => {
-                let function_statement = create_back_map_string(mixin);
+                let function_statement = create_mixin_call_string(mixin);
                 let from = src.from as i32 + injection.offset;
                 let from  = from as usize;
                 let index1 = get_index_of_line(file, from);
@@ -93,7 +93,7 @@ pub fn compile(config: &Config) {
             },
             // Inserts at the end of target
             MixinTypes::Tail(injection) => {
-                let function_statement = create_back_map_string(mixin);
+                let function_statement = create_mixin_call_string(mixin);
                 let to = src.to as i32 - injection.offset;
                 let to  = to as usize;
                 let index1 = get_index_of_line(file, to);
@@ -114,7 +114,7 @@ pub fn compile(config: &Config) {
         if config.use_document_root {
             prepend = "$_SERVER['DOCUMENT_ROOT'] . ";
         }
-        let namespaced = format!("{}/{}", injection.2, injection.3);
+        let namespaced = format!("{}\\{}", injection.2, injection.3);
         let map_back = format!("\n#mixin {} from {}\n", namespaced, injection_path.clone().to_string_lossy());
         let use_statement = format!("use function {};\n", namespaced);
         let require_statement = format!("require_once {}\"/{}\";\n", prepend, injection_path.to_str().unwrap());
@@ -135,8 +135,13 @@ pub fn compile(config: &Config) {
     println!("Done!");
 }
 
-fn create_back_map_string(mixin: &super::mixin::Mixin) -> String {
-    return format!("\n{}(); #mixin call {} from {}", mixin.name, mixin.name, mixin.path);
+fn create_mixin_call_string(mixin: &super::mixin::Mixin) -> String {
+    return format!("\n{}({}); #mixin call {} from {}", 
+        mixin.name, 
+        mixin.args.join(", "), 
+        mixin.name, 
+        mixin.path
+    );
 }
 
 fn extract_target_mapping(tag: &str) -> Vec<String> {

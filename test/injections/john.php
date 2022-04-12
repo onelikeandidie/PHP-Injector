@@ -1,6 +1,6 @@
 <?php
 namespace johnInjection;
-require_once("./requires.php");
+require_once($_SERVER["DOCUMENT_ROOT"] . "/test/injections/requires.php");
 
 #@Inject(at = "HEAD", target = "index.php/$Findex")
 function JohnSearchMixin() {
@@ -15,6 +15,11 @@ function JohnMaybeMixin() {
 #@Inject(at = "HEAD", target = "index.php/$CController$Findex")
 function JohnControllerSearchMixin() {
     echo "Looking for John in the Controller...";
+}
+
+#@Inject(at = "HEAD", target = "index.php/$CController$Findex")
+function JohnControllerModifyVarMixin(string &$var) {
+    $var = "Variable changed in mixin!";
 }
 
 #@Inject(at = "HEAD", target = "nested/view.php/$Ftest")

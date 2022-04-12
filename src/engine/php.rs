@@ -1,5 +1,12 @@
 use std::{collections::HashMap, path::Path, fs};
 
+use regex::Regex;
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref FUNCTION_ARGS_REGEX: Regex = Regex::new(r"\$\w+").unwrap();
+}
+
 pub fn extract_namespace(line: &str) -> &str {
     // namespace and a space has 10 chars (also remove the trailing ';')
     let name = &line[10..(line.len() - 1)];
@@ -13,6 +20,16 @@ pub fn extract_function_name(line: &str) -> &str {
     // function and a space has 9 chars
     let name = &line[(function_start_index + 9)..parameter_start_index];
     return name;
+}
+
+pub fn extract_function_params(line: &str) -> Vec<String> {
+    let line = line.trim();
+    let regex = &FUNCTION_ARGS_REGEX;
+    let mut args = vec![]; 
+    for capture in regex.captures_iter(line) {
+        args.push(capture[0].to_string());
+    };
+    return args;
 }
 
 pub fn extract_class_name(line: &str) -> &str {
@@ -34,12 +51,14 @@ pub fn extract_source_mappings(php_content: &String, path: &Path) -> HashMap<Str
     let mut map = HashMap::new();
     let mut lines = php_content.lines();
     let mut is_in_multiline_comment = false;
-    let mut parent = "".to_owned();
     let mut is_in_function = false;
+    let mut is_in_multiline_params = false;
+    let mut find_last_function_start = false;
+    let mut parent = "".to_owned();
+    let mut last_function_mapping = "".to_owned();
+    let mut last_function_args: Vec<String> = vec![];
     let mut last_function_depth = 0;
     let mut last_function_start = 0;
-    let mut find_last_function_start = false;
-    let mut last_function_mapping = "".to_owned();
     let mut bracket_lvl = 0;
     let mut v_cursor = 0;
     while let Some(line) = lines.next() {
@@ -58,14 +77,25 @@ pub fn extract_source_mappings(php_content: &String, path: &Path) -> HashMap<Str
         if is_in_multiline_comment {
             continue;
         }
-        if line.contains("function") {
+        // If we don't search for "function " it'll also match calls to
+        // functions like "function_exists". So for now, adding a space
+        // fixes this issue
+        if line.contains("function ") {
             last_function_mapping = parent.clone() + &"$F".to_owned() + extract_function_name(line);
             last_function_depth = bracket_lvl;
+            last_function_args = vec![];
             if line.trim_end().ends_with("{") {
                 is_in_function = true;
                 last_function_start = v_cursor;
             } else {
                 find_last_function_start = true;
+            }
+            // Check for 1 line params
+            if line.contains("(") && line.contains(")") {
+                last_function_args = extract_function_params(line);
+            }
+            if line.contains("(") {
+                is_in_multiline_params = true;
             }
         }
         if line.starts_with("class") {
@@ -77,6 +107,13 @@ pub fn extract_source_mappings(php_content: &String, path: &Path) -> HashMap<Str
         if line.starts_with("}") || line.ends_with("}") {
             depth_change -= 1;
         }
+        if is_in_multiline_params {
+            let args = extract_function_params(line);
+            last_function_args.to_vec().extend(args);
+            if line.starts_with(")") || line.ends_with(")") {
+                is_in_multiline_params = false;
+            }
+        }
         if find_last_function_start && depth_change > 0 {
             last_function_start = v_cursor;
             find_last_function_start = false;
@@ -87,6 +124,7 @@ pub fn extract_source_mappings(php_content: &String, path: &Path) -> HashMap<Str
             map.insert(last_function_mapping.clone(), SourceMapping {
                 path: path.to_str().unwrap().to_string(),
                 mapping: last_function_mapping.clone(),
+                args: last_function_args.to_vec(),
                 from: last_function_start,
                 to: v_cursor,
             });
@@ -109,6 +147,7 @@ pub fn extract_source_mappings(php_content: &String, path: &Path) -> HashMap<Str
 pub struct SourceMapping {
     pub path: String,
     pub mapping: String,
+    pub args: Vec<String>,
     pub from: usize,
     pub to: usize,
 }

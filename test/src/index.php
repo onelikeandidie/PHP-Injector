@@ -6,13 +6,17 @@ function index() {
 index();
 
 class Controller {
-    public function index(Type $var = null)
+    public function index(string $var = "Hello")
     {
-       echo "<html>";
-       echo "</html>";
+       echo "<p>";
+       echo $var;
+       echo "</p>";
     }
 
     public static function getInstance() {
         throw new Exception("Error Processing Request", 1);
     }
 }
+
+$controller = new Controller();
+$controller->index("Help!");

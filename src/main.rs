@@ -4,6 +4,9 @@ use php_injector::engine::compiler::compile;
 use php_injector::engine::config::{Config, extract_config};
 use php_injector::engine::watcher::watch;
 
+#[macro_use]
+extern crate lazy_static;
+
 fn main() {
     // Collect command arguments
     let args: Vec<String> = env::args().collect();
