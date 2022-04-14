@@ -4,8 +4,12 @@ use regex::Regex;
 use lazy_static::lazy_static;
 use walkdir::WalkDir;
 
+use crate::engine::util::count_occurences_not_in_string;
+
 lazy_static! {
     static ref FUNCTION_ARGS_REGEX: Regex = Regex::new(r"\$\w+").unwrap();
+    static ref FUNCTION_STATEMENT_REGEX: Regex = Regex::new(r"(function)\s+\w+\s*\(").unwrap();
+    static ref CLASS_STATEMENT_REGEX: Regex = Regex::new(r"(class)\s+\w+\s*").unwrap();
 }
 
 pub fn extract_namespace(line: &str) -> &str {
@@ -35,7 +39,16 @@ pub fn extract_function_params(line: &str) -> Vec<String> {
 
 pub fn extract_class_name(line: &str) -> &str {
     let line = line.trim();
-    let bracket_start_index = line.find("{").unwrap_or(line.len());
+    // Classes could extend others, lets check for that since that would make
+    // the substringing smaller...
+    let bracket_start_index;
+    if line.contains("extends") {
+        bracket_start_index = line.find("extends").unwrap_or(line.len());
+    } else if line.contains("implements") {
+        bracket_start_index = line.find("implements").unwrap_or(line.len());
+    } else {
+        bracket_start_index = line.find("{").unwrap_or(line.len());
+    }
     // class and a space has 6 chars
     let name = &line[6..bracket_start_index].trim();
     return name;
@@ -55,7 +68,9 @@ pub fn extract_source_mappings(php_content: &String, path: &Path) -> HashMap<Str
     let mut is_in_function = false;
     let mut is_in_multiline_params = false;
     let mut find_last_function_start = false;
-    let mut parent = "".to_owned();
+    let mut class = "".to_owned();
+    let mut class_start_depth = 0;
+    let mut is_in_class = false;
     let mut last_function_mapping = "".to_owned();
     let mut last_function_args: Vec<String> = vec![];
     let mut last_function_depth = 0;
@@ -65,15 +80,18 @@ pub fn extract_source_mappings(php_content: &String, path: &Path) -> HashMap<Str
     while let Some(line) = lines.next() {
         v_cursor += 1;
         let line = line.trim();
-        let mut depth_change = 0;
+        let mut depth_change: i32 = 0;
         if line.starts_with("#") || line.starts_with("//") {
             continue;
         }
-        if line.starts_with("/*") || line.starts_with("/**") {
+        if line.starts_with("/*") || line.ends_with("/*") {
             is_in_multiline_comment = true;
         }
-        if line.starts_with("*/") {
+        if line.starts_with("*/") || line.ends_with("*/") {
             is_in_multiline_comment = false;
+        }
+        if line.contains("/*") && line.contains("*/") {
+            continue;
         }
         if is_in_multiline_comment {
             continue;
@@ -81,8 +99,10 @@ pub fn extract_source_mappings(php_content: &String, path: &Path) -> HashMap<Str
         // If we don't search for "function " it'll also match calls to
         // functions like "function_exists". So for now, adding a space
         // fixes this issue
-        if line.contains("function ") {
-            last_function_mapping = parent.clone() + &"$F".to_owned() + extract_function_name(line);
+        // There's also anonymous functions... that fucks up this code
+        // pretty well...
+        if !is_in_function && FUNCTION_STATEMENT_REGEX.is_match(line) {
+            last_function_mapping = class.clone() + &"$F".to_owned() + extract_function_name(line);
             last_function_depth = bracket_lvl;
             last_function_args = vec![];
             if line.trim_end().ends_with("{") {
@@ -99,14 +119,16 @@ pub fn extract_source_mappings(php_content: &String, path: &Path) -> HashMap<Str
                 is_in_multiline_params = true;
             }
         }
-        if line.starts_with("class") {
-            parent = "$C".to_owned() + extract_class_name(line);
+        if !is_in_class && CLASS_STATEMENT_REGEX.is_match(line) {
+            class = "$C".to_owned() + extract_class_name(line);
+            is_in_class = true;
+            class_start_depth = bracket_lvl;
         }
-        if line.starts_with("{") || line.ends_with("{") {
-            depth_change += 1;
+        if line.contains("{") {
+            depth_change += count_occurences_not_in_string(line, '{') as i32;
         }
-        if line.starts_with("}") || line.ends_with("}") {
-            depth_change -= 1;
+        if line.contains("}") {
+            depth_change -= count_occurences_not_in_string(line, '}') as i32;
         }
         if is_in_multiline_params {
             let args = extract_function_params(line);
@@ -121,7 +143,7 @@ pub fn extract_source_mappings(php_content: &String, path: &Path) -> HashMap<Str
             is_in_function = true;
         }
         bracket_lvl += depth_change;
-        if is_in_function && bracket_lvl == last_function_depth {
+        if is_in_function && bracket_lvl <= last_function_depth {
             map.insert(last_function_mapping.clone(), SourceMapping {
                 path: path.to_str().unwrap().to_string(),
                 mapping: last_function_mapping.clone(),
@@ -131,14 +153,15 @@ pub fn extract_source_mappings(php_content: &String, path: &Path) -> HashMap<Str
             });
             is_in_function = !is_in_function;
         }
-        if bracket_lvl <= 0 {
-            if parent.len() > 0 {
-                parent = "".to_owned();
-            }
+        if is_in_class && bracket_lvl <= class_start_depth {
+            class = "".to_owned();
+            is_in_class = false;
+            class_start_depth = 0;
         }
     }
     // Check if it is still in a function or a class
-    if is_in_function || parent.len() > 0 {
+    if is_in_function || is_in_class {
+        println!("Failed on: {} In: {}", last_function_mapping, path.to_string_lossy());
         panic!("Could not create source mappings");
     }
     return map;

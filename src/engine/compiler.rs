@@ -3,7 +3,7 @@ use std::io::Write;
 
 use walkdir::WalkDir;
 
-use crate::engine::{php::{extract_source_mappings, walk_src_mappings}, util::get_index_of_line};
+use crate::engine::{php::walk_src_mappings, util::get_index_of_line};
 
 use super::php::SourceMapping;
 use super::mixin::MixinTypes;
@@ -20,13 +20,18 @@ pub fn compile(
     let injections_path = origin.join(Path::new(&config.injections));
     let src_path = origin.join(Path::new(&config.src));
     let cache_path = origin.join(Path::new(&config.cache));
+    // Copy other files if required
+    if config.copy_other {
+        println!("Copy option provided, copying sources to cache dir before compiling");
+        copy_src(&src_path, &cache_path);
+    }
     // Instanciate the interpreter
     let mut god = Interpreter::default();
     let walk_dir = WalkDir::new(injections_path.clone());
     for entry in walk_dir {
         let entry = entry.unwrap();
         if entry.file_type().is_file() {
-            println!("> Interpreting {}", entry.path().to_string_lossy());
+            if config.debbuging { println!("> Interpreting {}", entry.path().to_string_lossy()); }
             let contents = read_to_string(entry.path()).unwrap();
             god.interpret(&contents, entry.path());
         }
@@ -34,7 +39,7 @@ pub fn compile(
     println!("Mapping Sources");
     let (mut files, mut source_mappings);
     if let Some(mappings) = source {
-        // This is for when the "wat"
+        // This is for when the "watcher" has a cache of the source files
         files = mappings.0; 
         source_mappings = mappings.1;
     } else {
@@ -46,7 +51,7 @@ pub fn compile(
     println!("Compiling Mixins");
     let mut injections: Vec<(String, String, String, String)> = vec![];
     for mixin in &god.mixins {
-        println!("> Caching {}:{} on {}", mixin.namespace, mixin.name, mixin.target);
+        if config.debbuging { println!("> Caching {}:{} on {}", mixin.namespace, mixin.name, mixin.target); }
         let target = mixin.target.clone();
         if target.ends_with(".php") {
             // File mixins
@@ -66,7 +71,7 @@ pub fn compile(
         ));
         let clit = &target[(divider + 1)..(target.len())];
         let target_file = extract_src_map_from_target(&target);
-        let mut src = source_mappings
+        let src = source_mappings
             .get_mut(clit)
             .expect("Could not get source mapping");
         let file = files
@@ -100,7 +105,7 @@ pub fn compile(
     // First is src and second is injection
     let mut files_imported: Vec<(String, String)> = vec![];
     for injection in &injections {
-        println!("> Injecting requires {} into {}", injection.0, injection.1);
+        if config.debbuging { println!("> Injecting requires {} into {}", injection.0, injection.1); }
         let src_path = injection.1.clone();
         let garbage = injection.0.clone();
         let injection_path = Path::new(&garbage);
@@ -136,7 +141,7 @@ pub fn compile(
         fs::create_dir_all(parent).unwrap();
         let mut handle = File::create(path.clone()).unwrap();
         write!(handle, "{}", file.1).unwrap();
-        println!("> Wrote: {}", path.clone().to_string_lossy());
+        if config.debbuging { println!("> Wrote: {}", path.clone().to_string_lossy()); }
     }
     println!("Done! {} Mixins and {} Source Files written", mixin_count, file_count);
     return (mixin_count, file_count);
@@ -150,6 +155,22 @@ fn create_mixin_call_string(mixin: &super::mixin::Mixin) -> String {
         mixin.name, 
         mixin.path
     );
+}
+
+fn copy_src(src_path: &Path, cache_path: &Path) {
+    let walk_dir = WalkDir::new(src_path.clone());
+    for entry in walk_dir {
+        let entry = entry.unwrap();
+        if entry.file_type().is_file() {
+            let from = entry.clone().into_path();
+            let stripped = from.to_str().unwrap().replace(src_path.to_str().unwrap(), "");
+            let to = Path::new(cache_path);
+            let to = to.join(stripped);
+            let parent_dir = to.parent().unwrap();
+            fs::create_dir_all(parent_dir).expect("Could not create directories for source files");
+            fs::copy(entry.into_path(), to).expect("Could not copy other source files");
+        }
+    }
 }
 
 fn extract_target_mapping(tag: &str) -> Vec<String> {

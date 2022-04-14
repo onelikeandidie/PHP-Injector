@@ -21,3 +21,6 @@ There's some stuff I would like to add to make this a little faster
   Enough documentation could make it easy to create a library other devs could
   use or even a tool that could be installed with "cargo install". Food for
   thought.
+- Efficient Source Map >
+  I don't like how it maps all the sources even if the mixins are only on a 
+  couple of files. I want to waste processing time on that.

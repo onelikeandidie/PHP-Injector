@@ -25,3 +25,27 @@ pub fn get_index_of_line(txt: &str, index: usize) -> usize {
         .unwrap();
     return result_index;
 }
+
+pub fn count_occurences_not_in_string(txt: &str, pat: char) -> usize {
+    let mut count = 0 as usize;
+    let mut is_in_string = false;
+    let mut is_escaped = false;
+    let mut chars = txt.chars();
+    while let Some(character) = chars.next() {
+        if is_escaped {
+            is_escaped = false;
+            continue;
+        }
+        if character == '\\' {
+            is_escaped = true;
+            continue;
+        }
+        if character == pat && !is_in_string {
+            count += 1;
+        }
+        if character == '"' || character == '\''{
+            is_in_string = !is_in_string;
+        }
+    }
+    return count;
+}

@@ -228,7 +228,7 @@ dependencies = [
 
 [[package]]
 name = "php-injector"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "lazy_static",
  "notify",

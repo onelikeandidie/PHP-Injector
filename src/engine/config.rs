@@ -12,6 +12,7 @@ pub struct ConfigFile {
     pub src: String,
     pub cache: String,
     pub use_document_root: Option<bool>,
+    pub copy_other: Option<bool>
 }
 
 #[derive(Debug)]
@@ -20,7 +21,9 @@ pub struct Config {
     pub src: String,
     pub cache: String,
     pub origin: String,
-    pub use_document_root: bool
+    pub use_document_root: bool,
+    pub copy_other: bool,
+    pub debbuging: bool
 }
 
 pub fn extract_config(args: &Vec<String>) -> Result<Config, String> {
@@ -56,7 +59,9 @@ pub fn extract_config(args: &Vec<String>) -> Result<Config, String> {
             src: src,
             cache: cac,
             origin: ".".to_string(),
-            use_document_root: true
+            use_document_root: true,
+            debbuging: false,
+            copy_other: false
         });
     }
 
@@ -95,6 +100,8 @@ fn load_config(path: &str) -> Result<Config, String> {
                 cache: config.cache,
                 origin: path_obj.to_str().unwrap().to_string(),
                 use_document_root: config.use_document_root.unwrap_or(true),
+                copy_other: config.use_document_root.unwrap_or(false),
+                debbuging: false
             });
         },
         Err(_) => return Err("Could not parse config file!".to_string()),
