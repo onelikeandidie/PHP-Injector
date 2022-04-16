@@ -69,10 +69,9 @@ pub fn compile(
             mixin.namespace.to_string(),
             mixin.name.to_string(),
         ));
-        let clit = &target[(divider + 1)..(target.len())];
         let target_file = extract_src_map_from_target(&target);
         let src = source_mappings
-            .get_mut(clit)
+            .get_mut(&target)
             .expect("Could not get source mapping");
         let file = files
             .get_mut(target_file)
@@ -97,6 +96,23 @@ pub fn compile(
                 file.insert_str(index1, &function_statement);
                 move_mappings(&mut source_mappings, &path, to, -1);
             },
+            // Replaces a section of the target
+            MixinTypes::Slice(injection) => {
+                let function_statement = create_mixin_call_string(mixin);
+                let from = src.from + injection.from as usize;
+                let index1 = get_index_of_line(file, from);
+                let to = src.from + injection.to as usize;
+                let index2 = get_index_of_line(file, to);
+                let size = to - from;
+                let pre = file[0..index1].to_string();
+                let ap = file[index2..file.len()].to_string();
+                let result_file = &mut format!("{}{}", pre, ap);
+                move_mappings(&mut source_mappings, &path, from, size as i32);
+                result_file.insert_str(index1, &function_statement);
+                move_mappings(&mut source_mappings, &path, to, -1);
+                file.clear();
+                file.insert_str(0, &result_file);
+            }
             _ => {},
         }
     }

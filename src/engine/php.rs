@@ -144,7 +144,12 @@ pub fn extract_source_mappings(php_content: &String, path: &Path) -> HashMap<Str
         }
         bracket_lvl += depth_change;
         if is_in_function && bracket_lvl <= last_function_depth {
-            map.insert(last_function_mapping.clone(), SourceMapping {
+            let mapping_name = format!(
+                "{}/{}", 
+                path.to_str().unwrap().to_string(), 
+                last_function_mapping.clone()
+            );
+            map.insert(mapping_name, SourceMapping {
                 path: path.to_str().unwrap().to_string(),
                 mapping: last_function_mapping.clone(),
                 args: last_function_args.to_vec(),
