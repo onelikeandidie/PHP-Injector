@@ -17,13 +17,21 @@ fn main() {
         println!("Run with `--config \"path/to/config\" --watch` to watch files for changes");
     }
 
-    let config: Config;
+    let mut config: Config;
     match extract_config(&args) {
         Ok(imported_config) => config = imported_config,
         Err(error) => panic!("{}", error),
     }
 
     println!("{:?}", config);
+
+    if args.contains(&"--debug".to_string()) {
+        config.debbuging = true;
+    }
+
+    if args.contains(&"--copy-all".to_string()) {
+        config.copy_other = true;
+    }
 
     if args.contains(&"--watch".to_owned()) {
         watch(&config);
