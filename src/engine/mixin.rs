@@ -1,6 +1,7 @@
 use std::{fmt::Debug, collections::HashMap};
+use std::cmp::Ordering;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, PartialOrd)]
 pub struct Mixin {
     pub name: String,
     pub namespace: String,
@@ -18,6 +19,12 @@ impl Debug for Mixin {
             .field("at",        &self.at)
             .field("target",    &self.target)
             .finish()
+    }
+}
+
+impl Ord for Mixin {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.at.cmp(&other.at)
     }
 }
 
@@ -76,7 +83,7 @@ impl Mixin {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialOrd, PartialEq)]
 pub enum MixinTypes {
     None,
     Head(MixinHead),
@@ -85,6 +92,31 @@ pub enum MixinTypes {
     Replace(MixinReplace),
     Append(MixinAppend),
     Tail(MixinTail)
+}
+
+impl Ord for MixinTypes {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (self, other) {
+            (_, Self::None) => Ordering::Less,
+            (Self::None, _) => Ordering::Greater,
+            // Slices first
+            (_, Self::Slice(_)) => Ordering::Greater,
+            (Self::Slice(_), _) => Ordering::Less,
+            // Replaces, Prepends and Appends next
+            (Self::Prepend(_), Self::Replace(_)) => Ordering::Equal,
+            (Self::Prepend(_), Self::Append(_)) => Ordering::Equal,
+            (Self::Replace(_), Self::Prepend(_)) => Ordering::Equal,
+            (Self::Replace(_), Self::Append(_)) => Ordering::Equal,
+            (Self::Append(_), Self::Replace(_)) => Ordering::Equal,
+            (Self::Append(_), Self::Prepend(_)) => Ordering::Equal,
+            // Head and Tail last
+            (_, Self::Head(_)) => Ordering::Less,
+            (_, Self::Tail(_)) => Ordering::Less,
+            (Self::Head(_), _) => Ordering::Greater,
+            (Self::Tail(_), _) => Ordering::Greater,
+            (_,_) => Ordering::Equal
+        }
+    }
 }
 
 impl MixinTypes {
@@ -129,13 +161,13 @@ pub trait MixinType {
     fn fill_params(self: &mut Self, args: &HashMap<String, String>) -> &mut Self;
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Eq, PartialOrd)]
 pub struct MixinNone;
 impl MixinType for MixinNone {
     fn fill_params(self: &mut Self, _args: &HashMap<String, String>) -> &mut Self {self}
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Eq, PartialOrd)]
 pub struct MixinHead {
     pub offset: i32
 }
@@ -148,7 +180,7 @@ impl MixinType for MixinHead {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Eq, PartialOrd)]
 pub struct MixinSlice {
     pub from: i32,
     pub to: i32
@@ -161,7 +193,7 @@ impl MixinType for MixinSlice {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Eq, PartialOrd)]
 pub struct MixinPrepend {
     pub search: String,
     pub offset: i32
@@ -176,7 +208,7 @@ impl MixinType for MixinPrepend {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Eq, PartialOrd)]
 pub struct MixinReplace {
     pub search: String,
     pub offset: i32
@@ -191,7 +223,7 @@ impl MixinType for MixinReplace {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Eq, PartialOrd)]
 pub struct MixinAppend {
     pub search: String,
     pub offset: i32
@@ -206,7 +238,7 @@ impl MixinType for MixinAppend {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Eq, PartialOrd)]
 pub struct MixinTail {
     pub offset: i32
 }

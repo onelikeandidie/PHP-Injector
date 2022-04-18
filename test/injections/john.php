@@ -2,11 +2,6 @@
 namespace johnInjection;
 require_once($_SERVER["DOCUMENT_ROOT"] . "/test/injections/requires.php");
 
-#@Inject(at = "SLICE", target = "index.php/$Findex", from = 0, to = 1)
-function HelloJohnMixin() {
-    echo "Hello, from John :)";
-}
-
 #@Inject(at = "HEAD", target = "index.php/$Findex")
 function JohnSearchMixin() {
     echo "Looking for John...";
@@ -20,6 +15,19 @@ function JohnMaybeMixin() {
 #@Inject(at = "HEAD", target = "index.php/$CController$Findex")
 function JohnControllerSearchMixin() {
     echo "Looking for John in the Controller...";
+}
+
+#@Inject(at = "SLICE", target = "index.php/$CController$Findex", from = 0, to = 3)
+function JohnControllerSliceDefault(string &$var) {
+    echo "<p>";
+    echo "Sliced the default index output";
+    echo $var;
+    echo "</p>";
+}
+
+#@Inject(at = "SLICE", target = "index.php/$Findex", from = 0, to = 1)
+function HelloJohnMixin() {
+    echo "Hello, from John :)";
 }
 
 #@Inject(at = "HEAD", target = "index.php/$CController$Findex")

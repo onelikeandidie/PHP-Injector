@@ -60,5 +60,8 @@ impl Interpreter {
             let mixin = Mixin::extract_type(line);
             incomplete_mixin = mixin;
         }
+        self.mixins.sort_by(|a, b| {
+            a.cmp(b)
+        });
     }
 }
