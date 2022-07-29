@@ -27,6 +27,14 @@ function test6() {
     echo "test6";
 }
 
+function test7Hello($str) {
+    return "hello " . $str;
+}
+
+function test7() {
+    echo test7Hello("test7");
+}
+
 test0();
 test1();
 test2();
@@ -34,3 +42,4 @@ test3();
 test4();
 test5();
 test6();
+test7();

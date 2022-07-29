@@ -1,11 +1,12 @@
 use std::{path::Path, fs::{read_to_string, File, self}, collections::HashMap};
 use std::io::Write;
 
+use regex::Regex;
 use walkdir::WalkDir;
 
 use crate::engine::{php::walk_src_mappings, util::get_index_of_line};
 
-use super::php::SourceMapping;
+use super::{php::SourceMapping, mixin::Mixin};
 use super::mixin::MixinTypes;
 use super::interpreter::Interpreter;
 use super::config::Config;
@@ -80,21 +81,45 @@ pub fn compile(
         match &mixin.at {
             // Inserts at the start of target
             MixinTypes::Head(injection) => {
-                let function_statement = create_mixin_call_string(mixin);
                 let from = src.from as i32 + injection.offset;
-                let from  = from as usize;
-                let index1 = get_index_of_line(file, from);
-                file.insert_str(index1, &function_statement);
-                move_mappings(&mut source_mappings, &path, from, 1);
+                let from = from as usize;
+                let insert_index = get_index_of_line(file, from);
+                let move_amount: i32;
+                let insert_text;
+                if injection.raw_insert {
+                    let raw = &mixin.raw;
+                    let lines = raw.lines();
+                    let count = lines.count();
+                    insert_text = create_raw_mixin_string(mixin, raw);
+                    move_amount = count as i32;
+                } else {
+                    let function_statement = create_mixin_call_string(mixin);
+                    insert_text = function_statement;
+                    move_amount = 1;
+                }
+                file.insert_str(insert_index, &insert_text);
+                move_mappings(&mut source_mappings, &path, from, move_amount);
             },
             // Inserts at the end of target
             MixinTypes::Tail(injection) => {
-                let function_statement = create_mixin_call_string(mixin);
                 let to = src.to as i32 - injection.offset;
-                let to  = to as usize;
-                let index1 = get_index_of_line(file, to);
-                file.insert_str(index1, &function_statement);
-                move_mappings(&mut source_mappings, &path, to, -1);
+                let to = to as usize;
+                let insert_index = get_index_of_line(file, to);
+                let move_amount: i32;
+                let insert_text;
+                if injection.raw_insert {
+                    let raw = &mixin.raw;
+                    let lines = raw.lines();
+                    let count = lines.count();
+                    insert_text = create_raw_mixin_string(mixin, raw);
+                    move_amount = -(count as i32);
+                } else {
+                    let function_statement = create_mixin_call_string(mixin);
+                    insert_text = function_statement;
+                    move_amount = -1;
+                }
+                file.insert_str(insert_index, &insert_text);
+                move_mappings(&mut source_mappings, &path, to, move_amount);
             },
             // Replaces a section of the target
             MixinTypes::Slice(injection) => {
@@ -113,6 +138,47 @@ pub fn compile(
                 file.clear();
                 file.insert_str(0, &result_file);
             }
+            /* TODO: Non-raw append and prepend
+                PREPEND and APPEND should support mixin calls instead of
+                just raw inserts
+             */
+            // Searches for a string and replaces it
+            MixinTypes::Replace(_) => {
+                let pos = find_search_target(mixin, file);
+                if pos.0 == 0 && pos.1 == 0 {
+                    continue;
+                }
+                let pre = file[0..pos.0].to_string();
+                let ap = file[pos.1..file.len()].to_string();
+                let result_file = &mut format!("{}{}", pre, ap);
+                result_file.insert_str(pos.0, &mixin.raw);
+                file.clear();
+                file.insert_str(0, &result_file);
+            },
+            MixinTypes::Prepend(_) => {
+                let pos = find_search_target(mixin, file);
+                if pos.0 == 0 {
+                    continue;
+                }
+                let pre = file[0..pos.0].to_string();
+                let ap = file[pos.0..file.len()].to_string();
+                let result_file = &mut format!("{}{}", pre, ap);
+                result_file.insert_str(pos.0, &mixin.raw);
+                file.clear();
+                file.insert_str(0, &result_file);
+            },
+            MixinTypes::Append(_) => {
+                let pos = find_search_target(mixin, file);
+                if pos.1 == 0 {
+                    continue;
+                }
+                let pre = file[0..pos.1].to_string();
+                let ap = file[pos.1..file.len()].to_string();
+                let result_file = &mut format!("{}{}", pre, ap);
+                result_file.insert_str(pos.1, &mixin.raw);
+                file.clear();
+                file.insert_str(0, &result_file);
+            },
             _ => {},
         }
     }
@@ -173,6 +239,18 @@ fn create_mixin_call_string(mixin: &super::mixin::Mixin) -> String {
     );
 }
 
+fn create_raw_mixin_string(mixin: &super::mixin::Mixin, raw: &String) -> String {
+    let pre = format!("\n#mixin start injection {} from {}\n", 
+        mixin.name, 
+        mixin.path
+    );
+    let post = format!("\n#mixin end injection {} from {}\n", 
+        mixin.name, 
+        mixin.path
+    );
+    format!("{}{}{}", pre, raw, post)
+}
+
 fn copy_src(src_path: &Path, cache_path: &Path) {
     let walk_dir = WalkDir::new(src_path.clone());
     for entry in walk_dir {
@@ -189,7 +267,7 @@ fn copy_src(src_path: &Path, cache_path: &Path) {
     }
 }
 
-fn extract_target_mapping(tag: &str) -> Vec<String> {
+fn _extract_target_mapping(tag: &str) -> Vec<String> {
     let mut mapping: Vec<String> = vec![];
     let mut tag = tag.clone();
     while tag.len() > 0 {
@@ -239,5 +317,46 @@ fn move_mappings(
         if mapping.to > start_index {
             mapping.to = (mapping.to as i32 + move_amount) as usize;
         }
+    }
+}
+
+fn find_search_target(
+    mixin: &Mixin,
+    file: &str,
+) -> (usize, usize) {
+    // Panics if the "panic = true" is set on the @Inject statment
+    let msg = format!(
+        "Could not find matching search data for the following mixin: \n {:#?}", 
+        &mixin
+    );
+    match &mixin.at {
+        MixinTypes::Prepend(injection) | 
+        MixinTypes::Append(injection) | 
+        MixinTypes::Replace(injection) => {
+            if injection.regex {
+                let regex = Regex::new(&injection.search)
+                    .expect("Invalid regex in search type mixin");
+                let result = regex.find(file);
+                if let Some(mtch) = result {
+                    return (mtch.start(), mtch.end());
+                } else {
+                    if mixin.panic {
+                        panic!("{}", msg);
+                    }
+                    println!("{}", msg);
+                    return (0,0);
+                }
+            }
+            if let Some(index1) = file.find(&injection.search) {
+                return (index1, index1 + injection.search.len());
+            } else {
+                if mixin.panic {
+                    panic!("{}", msg);
+                }
+                println!("{}", msg);
+                return (0, 0);
+            }
+        },
+        _ => return (0, 0),
     }
 }

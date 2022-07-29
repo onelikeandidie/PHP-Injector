@@ -28,6 +28,7 @@ impl Interpreter {
         let mut lines = contents.lines();
         let mut namespace: &str = "";
         let mut incomplete_mixin: Mixin = Mixin::new();
+        let mut raw = "".to_string();
         let path = path.to_str().unwrap();
         while let Some(line) = lines.next() {
             // Start of processing
@@ -35,18 +36,25 @@ impl Interpreter {
                 let mut name = php::extract_namespace(line);
                 namespace = &mut name;
             }
+            // I love if blocks in if blocks
             if incomplete_mixin.at != MixinTypes::None {
+                // This if only executes if the interpreter is currently 
+                // inside a mixin
                 if line.starts_with("function") {
+                    // Reset the raw counter
+                    raw = "".to_string();
                     // Name the mixin
-                    let complete_mixin = Mixin {
-                        name: php::extract_function_name(line).to_string(),
-                        namespace: namespace.to_string(),
-                        at: incomplete_mixin.at.clone(),
-                        args: php::extract_function_params(line),
-                        target: incomplete_mixin.target.clone(),
-                        path: path.to_string()
-                    };
-                    self.mixins.push(complete_mixin);
+                    incomplete_mixin.name = php::extract_function_name(line).to_string();
+                    incomplete_mixin.namespace = namespace.to_string();
+                    incomplete_mixin.args = php::extract_function_params(line);
+                    incomplete_mixin.path = path.to_string();
+                } else {
+                    if line.starts_with("}") {
+                        incomplete_mixin.raw = raw.clone();
+                        self.mixins.push(incomplete_mixin.clone());
+                    } else {
+                        raw = format!("{}{}", raw.clone(), line);
+                    }
                 }
             }
             if !line.starts_with("#@Inject") {

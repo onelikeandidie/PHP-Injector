@@ -1,3 +1,5 @@
+use std::fmt::Display;
+use std::str::FromStr;
 use std::{fmt::Debug, collections::HashMap};
 use std::cmp::Ordering;
 
@@ -9,6 +11,8 @@ pub struct Mixin {
     pub args: Vec<String>,
     pub target: String,
     pub path: String,
+    pub raw: String,
+    pub panic: bool
 }
 
 impl Debug for Mixin {
@@ -18,6 +22,8 @@ impl Debug for Mixin {
             .field("namespace", &self.namespace)
             .field("at",        &self.at)
             .field("target",    &self.target)
+            .field("raw_line_count", &self.raw.len())
+            .field("panic", &self.panic)
             .finish()
     }
 }
@@ -36,7 +42,9 @@ impl Mixin {
             at: MixinTypes::None, 
             args: vec![],
             target: Default::default(),
-            path: Default::default()
+            path: Default::default(),
+            raw: Default::default(),
+            panic: true,
         }
     }
 
@@ -45,8 +53,12 @@ impl Mixin {
         let args = Self::extract_arguments(line);
         let at = args.get("at").unwrap().replace("\"", "");
         let target = args.get("target").unwrap().replace("\"", "");
+        let panic = args.get("panic")
+            .or(Some(&"true".to_string()))
+            .unwrap().replace("\"", "");
         mixin.at = MixinTypes::get(&at, &args);
         mixin.target = target;
+        mixin.panic = panic == "true";
         return mixin;
     }
 
@@ -86,12 +98,12 @@ impl Mixin {
 #[derive(Debug, Clone, Eq, PartialOrd, PartialEq)]
 pub enum MixinTypes {
     None,
-    Head(MixinHead),
+    Head(MixinInsert),
     Slice(MixinSlice),
-    Prepend(MixinPrepend),
-    Replace(MixinReplace),
-    Append(MixinAppend),
-    Tail(MixinTail)
+    Prepend(MixinSearch),
+    Replace(MixinSearch),
+    Append(MixinSearch),
+    Tail(MixinInsert)
 }
 
 impl Ord for MixinTypes {
@@ -119,11 +131,25 @@ impl Ord for MixinTypes {
     }
 }
 
+impl Display for MixinTypes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", match self {
+            Self::Head(_) => "Head",
+            Self::Tail(_) => "Tail",
+            Self::Slice(_) => "Slice",
+            Self::Replace(_) => "Replace",
+            Self::Prepend(_) => "Prepend",
+            Self::Replace(_) => "Replace",
+            _ => "None"
+        })
+    }
+}
+
 impl MixinTypes {
     pub fn get(at: &str, args: &HashMap<String, String>) -> Self {
         match at {
             "HEAD"      => {
-                let mut mixin = MixinHead::default();
+                let mut mixin = MixinInsert::default();
                 mixin.fill_params(args);
                 return MixinTypes::Head(mixin);
             },
@@ -133,22 +159,22 @@ impl MixinTypes {
                 return MixinTypes::Slice(mixin);
             },
             "PREPEND"   => {
-                let mut mixin = MixinPrepend::default();
+                let mut mixin = MixinSearch::default();
                 mixin.fill_params(args);
                 return MixinTypes::Prepend(mixin);
             },
             "REPLACE"   => {
-                let mut mixin = MixinReplace::default();
+                let mut mixin = MixinSearch::default();
                 mixin.fill_params(args);
                 return MixinTypes::Replace(mixin);
             },
             "APPEND"    => {
-                let mut mixin = MixinAppend::default();
+                let mut mixin = MixinSearch::default();
                 mixin.fill_params(args);
                 return MixinTypes::Append(mixin);
             },
             "TAIL"      => {
-                let mut mixin = MixinTail::default();
+                let mut mixin = MixinInsert::default();
                 mixin.fill_params(args);
                 return MixinTypes::Tail(mixin);
             },
@@ -168,14 +194,18 @@ impl MixinType for MixinNone {
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Eq, PartialOrd)]
-pub struct MixinHead {
-    pub offset: i32
+pub struct MixinInsert {
+    pub offset: i32,
+    pub raw_insert: bool,
 }
-impl MixinType for MixinHead {
+impl MixinType for MixinInsert {
     fn fill_params(self: &mut Self, args: &HashMap<String, String>) -> &mut Self {
         self.offset = args.get("offset")
                         .unwrap_or(&"0".to_string())
                         .parse::<i32>().unwrap();
+        self.raw_insert = args.get("raw")
+                        .unwrap_or(&"false".to_string())
+                        .parse::<bool>().unwrap();
         return self;
     }
 }
@@ -194,59 +224,33 @@ impl MixinType for MixinSlice {
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Eq, PartialOrd)]
-pub struct MixinPrepend {
+pub struct MixinSearch {
     pub search: String,
-    pub offset: i32
+    pub regex: bool,
+    pub offset: i32,
+    pub count: u32,
+    pub raw_insert: bool,
 }
-impl MixinType for MixinPrepend {
+impl MixinType for MixinSearch {
     fn fill_params(self: &mut Self, args: &HashMap<String, String>) -> &mut Self {
         self.search = args.get("search").unwrap().to_owned();
         self.offset = args.get("offset")
                         .unwrap_or(&"0".to_string())
                         .parse::<i32>().unwrap();
-        return self;
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Default, Eq, PartialOrd)]
-pub struct MixinReplace {
-    pub search: String,
-    pub offset: i32
-}
-impl MixinType for MixinReplace {
-    fn fill_params(self: &mut Self, args: &HashMap<String, String>) -> &mut Self {
-        self.search = args.get("search").unwrap().to_owned();
-        self.offset = args.get("offset")
+        self.count = args.get("count")
                         .unwrap_or(&"0".to_string())
-                        .parse::<i32>().unwrap();
-        return self;
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Default, Eq, PartialOrd)]
-pub struct MixinAppend {
-    pub search: String,
-    pub offset: i32
-}
-impl MixinType for MixinAppend {
-    fn fill_params(self: &mut Self, args: &HashMap<String, String>) -> &mut Self {
-        self.search = args.get("search").unwrap().to_owned();
-        self.offset = args.get("offset")
-                        .unwrap_or(&"0".to_string())
-                        .parse::<i32>().unwrap();
-        return self;
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Default, Eq, PartialOrd)]
-pub struct MixinTail {
-    pub offset: i32
-}
-impl MixinType for MixinTail {
-    fn fill_params(self: &mut Self, args: &HashMap<String, String>) -> &mut Self {
-        self.offset = args.get("offset")
-                        .unwrap_or(&"0".to_string())
-                        .parse::<i32>().unwrap();
+                        .parse::<u32>().unwrap();
+        self.raw_insert = args.get("raw")
+                        .unwrap_or(&"false".to_string())
+                        .parse::<bool>().unwrap();
+        // Check if the search is supposed to be treated as regex
+        if self.search.starts_with("r") {
+            self.regex = true;
+            self.search.remove(0);
+        }
+        // Normally the search is quoted which means we have to transform it to
+        // a string.
+        self.search = String::from_str(&self.search[1..self.search.len()-1].replace("\\\"", "\"")).unwrap();
         return self;
     }
 }

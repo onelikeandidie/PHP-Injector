@@ -54,3 +54,8 @@ function ShowDirTailMixin() {
 function GoodByeTailMixin() {
     echo "Goodbye!";
 }
+
+#@Inject(at = "TAIL", target = "index.php/$Findex", raw = true)
+function GoodByeTailRawMixin() {
+    echo "Raw injection!";
+}
